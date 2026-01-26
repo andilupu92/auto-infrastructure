@@ -1,0 +1,180 @@
+version: "3.9"
+
+networks:
+  auto-network:
+    driver: bridge
+
+volumes:
+  #auth_db_data:
+  #car_db_data:
+  #document_db_data:
+  consul_data:
+  grafana_data:
+
+services:
+
+  # =========================
+  # CONSUL
+  # =========================
+  consul:
+    image: hashicorp/consul:1.17
+    container_name: consul-service
+    command: agent -server -ui -node=consul -bootstrap-expect=1 -client=0.0.0.0
+    ports:
+      - "8500:8500"
+    volumes:
+      - consul_data:/consul/data
+    networks:
+      - auto-network
+
+  # =========================
+  # PROMETHEUS
+  # =========================
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    depends_on:
+      - consul
+      - auto-api-gateway
+    networks:
+      - auto-network
+
+  # =========================
+  # GRAFANA
+  # =========================
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - auto-network
+
+  # =========================
+  # DATABASES
+  # =========================
+
+    #auth-db:
+    #image: postgres:16
+    #container_name: auth-db
+      #environment:
+      #POSTGRES_DB: authdb
+      #POSTGRES_USER: authuser
+      #POSTGRES_PASSWORD: authpass
+      #volumes:
+      #- auth_db_data:/var/lib/postgresql/data
+      #networks:
+      #- auto-network
+
+    #car-db:
+    #image: postgres:16
+    #container_name: car-db
+      #environment:
+      #POSTGRES_DB: cardb
+      #POSTGRES_USER: caruser
+      #POSTGRES_PASSWORD: carpass
+      #volumes:
+      #- car_db_data:/var/lib/postgresql/data
+      #networks:
+      #- auto-network
+
+    #document-db:
+    #image: postgres:16
+    #container_name: document-db
+      #environment:
+      #POSTGRES_DB: documentdb
+      #POSTGRES_USER: docuser
+      #POSTGRES_PASSWORD: docpass
+      #volumes:
+      #- document_db_data:/var/lib/postgresql/data
+      #networks:
+      #- auto-network
+
+  # =========================
+  # MICROSERVICES (IMAGES)
+  # =========================
+
+  auto-auth-service:
+    image: andreilupu92/auto-auth-service:latest
+    container_name: auto-auth-service
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      #DB_HOST: auth-db
+      #DB_NAME: authdb
+      #DB_USER: authuser
+      #DB_PASSWORD: authpass
+      CONSUL_HOST: consul
+    depends_on:
+      #- auth-db
+      - consul
+    networks:
+      - auto-network
+
+  auto-car-service:
+    image: andreilupu92/auto-car-service:latest
+    container_name: auto-car-service
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      #DB_HOST: car-db
+      #DB_NAME: cardb
+      #DB_USER: caruser
+      #DB_PASSWORD: carpass
+      CONSUL_HOST: consul
+    depends_on:
+      #- car-db
+      - consul
+    networks:
+      - auto-network
+
+  auto-document-service:
+    image: andreilupu92/auto-document-service:latest
+    container_name: auto-document-service
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      #DB_HOST: document-db
+      #DB_NAME: documentdb
+      #DB_USER: docuser
+      #DB_PASSWORD: docpass
+      CONSUL_HOST: consul
+    depends_on:
+      #- document-db
+      - consul
+    networks:
+      - auto-network
+
+  auto-api-gateway:
+    image: andreilupu92/auto-api-gateway-service:latest
+    container_name: auto-api-gateway-service
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      CONSUL_HOST: consul
+    depends_on:
+      - consul
+      - auto-auth-service
+      - auto-car-service
+      - auto-document-service
+    networks:
+      - auto-network
